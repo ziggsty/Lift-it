@@ -1,0 +1,6 @@
+{
+  "name": "Lift It - Fitness & Nutrition Platform",
+  "description": "Enterprise RBAC backend system and fitness & nutrition platform with progressive overload algorithms, meal tracking, and admin controls.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
