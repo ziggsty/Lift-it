@@ -38,6 +38,7 @@ interface SessionExerciseState {
   target: string;
   equipment: string;
   notes?: string;
+  isCustom?: boolean;
   sets: WorkoutSetState[];
 }
 
@@ -62,6 +63,14 @@ export const WorkoutTab: React.FC<WorkoutTabProps> = ({ currentRole, onOpenAuth 
   const [activeModalItem, setActiveModalItem] = useState<WorkoutItem | null>(null);
   const [showAllHistoryModal, setShowAllHistoryModal] = useState(false);
   const [historySummary, setHistorySummary] = useState<any>(null);
+
+  // Custom Exercise Creator Modal State
+  const [showCustomModal, setShowCustomModal] = useState(false);
+  const [customExName, setCustomExName] = useState('');
+  const [customExBodyPart, setCustomExBodyPart] = useState('chest');
+  const [customExTarget, setCustomExTarget] = useState('pectorals');
+  const [customExEquipment, setCustomExEquipment] = useState('barbell');
+  const [customExNotes, setCustomExNotes] = useState('');
 
   // ==========================================
   // WORKOUT SESSION 'FOLDER/ROUTINE' STATE
@@ -319,6 +328,54 @@ export const WorkoutTab: React.FC<WorkoutTabProps> = ({ currentRole, onOpenAuth 
     setShowSuggestions(false);
     setActionMessage({
       text: `Added "${exercise.name}" to session folder!`,
+      type: 'success',
+    });
+  };
+
+  // Add Custom User-Typed Exercise (does not require pre-defined library ID)
+  const handleAddCustomExercise = (
+    nameInput: string,
+    bodyPartInput = 'chest',
+    targetInput = 'pectorals',
+    equipmentInput = 'barbell',
+    notesInput = ''
+  ) => {
+    const trimmed = nameInput.trim();
+    if (!trimmed) {
+      setActionMessage({
+        text: 'Please enter a custom exercise name before adding.',
+        type: 'error',
+      });
+      return;
+    }
+
+    const defaultWeight = weightUnit === 'lbs' ? 135 : 60;
+    const cleanSlug = `custom_${trimmed.toLowerCase().replace(/[^a-z0-9]+/g, '_')}`;
+
+    const newCustomExercise: SessionExerciseState = {
+      exerciseId: cleanSlug,
+      exerciseName: trimmed,
+      bodyPart: bodyPartInput || 'other',
+      target: targetInput || 'general',
+      equipment: equipmentInput || 'other',
+      notes: notesInput || '',
+      isCustom: true,
+      sets: [
+        { id: crypto.randomUUID(), setNumber: 1, weight: Math.round(defaultWeight * 0.7), reps: 12, rpe: 7, isWarmup: true },
+        { id: crypto.randomUUID(), setNumber: 2, weight: defaultWeight, reps: 10, rpe: 8.5, isWarmup: false },
+        { id: crypto.randomUUID(), setNumber: 3, weight: defaultWeight, reps: 8, rpe: 9, isWarmup: false },
+      ],
+    };
+
+    setSessionExercises((prev) => [...prev, newCustomExercise]);
+    setSearchQuery('');
+    setSuggestions([]);
+    setShowSuggestions(false);
+    setShowCustomModal(false);
+    setCustomExName('');
+    setCustomExNotes('');
+    setActionMessage({
+      text: `Added custom exercise "${trimmed}" to active session! It will count toward PRs, streaks & progressive overload.`,
       type: 'success',
     });
   };
@@ -961,26 +1018,39 @@ export const WorkoutTab: React.FC<WorkoutTabProps> = ({ currentRole, onOpenAuth 
             )}
 
             {/* ============================================================ */}
-            {/* EXERCISE AUTO-SUGGEST SEARCH BAR (SESSION)                   */}
+            {/* EXERCISE AUTO-SUGGEST SEARCH BAR & CUSTOM EXERCISE INPUT     */}
             {/* ============================================================ */}
             <div className="my-6">
               <div ref={searchContainerRef} className="relative">
-                <div className="flex items-center justify-between mb-1.5">
+                <div className="flex items-center justify-between mb-1.5 flex-wrap gap-2">
                   <label className="text-xs font-bold text-zinc-300 flex items-center gap-1.5">
                     <Search className="w-3.5 h-3.5 text-orange-400" />
                     Add Exercise to this Session
                   </label>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setActiveSubTab('library');
-                      fetchLibraryExercises();
-                    }}
-                    className="text-[11px] text-orange-400 hover:underline flex items-center gap-1 font-semibold"
-                  >
-                    <BookOpen className="w-3.5 h-3.5" />
-                    Or Browse Full Exercise Library →
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCustomExName(searchQuery.trim());
+                        setShowCustomModal(true);
+                      }}
+                      className="px-2.5 py-1 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 text-xs font-bold transition flex items-center gap-1.5 shadow-sm"
+                    >
+                      <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                      + Custom Movement Form
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveSubTab('library');
+                        fetchLibraryExercises();
+                      }}
+                      className="text-[11px] text-orange-400 hover:underline flex items-center gap-1 font-semibold"
+                    >
+                      <BookOpen className="w-3.5 h-3.5" />
+                      Browse Library →
+                    </button>
+                  </div>
                 </div>
 
                 <div className="relative">
@@ -988,54 +1058,107 @@ export const WorkoutTab: React.FC<WorkoutTabProps> = ({ currentRole, onOpenAuth 
                     type="text"
                     value={searchQuery}
                     onChange={(e) => handleSearchChange(e.target.value)}
-                    onFocus={() => {
-                      if (searchQuery.trim() && suggestions.length > 0) setShowSuggestions(true);
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && searchQuery.trim()) {
+                        e.preventDefault();
+                        handleAddCustomExercise(searchQuery.trim());
+                      }
                     }}
-                    placeholder="Type exercise name (e.g. 'bench', 'squat', 'deadlift', 'pull-up', 'curl')..."
-                    className="w-full pl-10 pr-10 py-2.5 bg-zinc-950 border border-zinc-800 hover:border-zinc-700 focus:border-orange-500 rounded-xl text-sm text-white focus:outline-none transition shadow-inner placeholder-zinc-500"
+                    onFocus={() => {
+                      if (searchQuery.trim()) setShowSuggestions(true);
+                    }}
+                    placeholder="Type custom exercise name or search library (e.g. 'Nordic Curl', 'Ring Dips', 'Hack Squat', 'Bench')..."
+                    className="w-full pl-10 pr-28 py-2.5 bg-zinc-950 border border-zinc-800 hover:border-zinc-700 focus:border-orange-500 rounded-xl text-sm text-white focus:outline-none transition shadow-inner placeholder-zinc-500"
                     autoComplete="off"
                   />
                   <Search className="w-4 h-4 text-zinc-500 absolute left-3.5 top-3" />
-                  {isSearching && (
-                    <div className="absolute right-3.5 top-3">
-                      <div className="w-4 h-4 border-2 border-orange-500 border-t-transparent rounded-full animate-spin" />
-                    </div>
-                  )}
+                  
+                  {/* Right Action inside search box */}
+                  <div className="absolute right-2 top-1.5 flex items-center gap-1.5">
+                    {isSearching && (
+                      <div className="w-4 h-4 border-2 border-orange-500 border-t-transparent rounded-full animate-spin mr-1" />
+                    )}
+                    {searchQuery.trim() && (
+                      <button
+                        type="button"
+                        onClick={() => handleAddCustomExercise(searchQuery.trim())}
+                        className="px-2.5 py-1.5 bg-orange-600 hover:bg-orange-500 text-white rounded-lg text-xs font-bold transition shadow-sm flex items-center gap-1"
+                        title="Add as custom exercise"
+                      >
+                        <Plus className="w-3.5 h-3.5" /> Add
+                      </button>
+                    )}
+                  </div>
                 </div>
 
-                {/* Auto-suggest dropdown results */}
-                {showSuggestions && suggestions.length > 0 && (
-                  <div className="absolute left-0 right-0 top-full mt-2 bg-zinc-900 border border-zinc-700/80 rounded-2xl shadow-2xl z-50 overflow-hidden divide-y divide-zinc-800/80 max-h-72 overflow-y-auto">
-                    <div className="px-3.5 py-2 bg-zinc-950/80 text-[10px] font-bold uppercase text-zinc-400 tracking-wider flex justify-between">
-                      <span>Database Matches</span>
-                      <span>Target Muscle / Equipment</span>
-                    </div>
-                    {suggestions.map((item) => (
-                      <button
-                        key={item.id}
-                        type="button"
-                        onClick={() => handleSelectExercise(item)}
-                        className="w-full px-4 py-3 text-left hover:bg-zinc-800/80 transition flex items-center justify-between gap-3 group"
-                      >
-                        <div>
-                          <div className="text-sm font-bold text-white group-hover:text-orange-400 transition">
-                            {item.name}
-                          </div>
-                          <div className="flex items-center gap-2 mt-1">
-                            <span className="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded bg-orange-500/15 text-orange-400 border border-orange-500/30">
-                              {item.body_part}
-                            </span>
-                            <span className="text-[11px] text-zinc-400">
-                              Target: <strong className="text-zinc-300">{item.target}</strong>
-                            </span>
-                            <span className="text-[11px] text-zinc-500">• {item.equipment}</span>
-                          </div>
-                        </div>
-                        <span className="text-xs font-bold text-orange-400 opacity-0 group-hover:opacity-100 transition shrink-0 flex items-center gap-1">
-                          + Add to Session
+                {/* Auto-suggest dropdown results with Custom Option */}
+                {showSuggestions && searchQuery.trim() && (
+                  <div className="absolute left-0 right-0 top-full mt-2 bg-zinc-900 border border-zinc-700/80 rounded-2xl shadow-2xl z-50 overflow-hidden divide-y divide-zinc-800/80 max-h-80 overflow-y-auto">
+                    {/* Primary Custom Exercise Action (Always Available) */}
+                    <div className="p-3 bg-gradient-to-r from-amber-500/15 via-orange-500/10 to-transparent flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2.5">
+                        <span className="p-1.5 rounded-lg bg-amber-500/20 text-amber-400">
+                          <Sparkles className="w-4 h-4" />
                         </span>
+                        <div>
+                          <div className="text-xs font-bold text-white flex items-center gap-1.5">
+                            Add <span className="text-orange-400 underline font-extrabold">"{searchQuery.trim()}"</span> as Custom Exercise
+                          </div>
+                          <span className="text-[10px] text-zinc-400">
+                            Saved directly into your workout logs; tracked for PRs, streaks &amp; overload targets.
+                          </span>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleAddCustomExercise(searchQuery.trim())}
+                        className="px-3 py-1.5 bg-orange-600 hover:bg-orange-500 text-white text-xs font-bold rounded-lg transition shadow-md flex items-center gap-1 shrink-0"
+                      >
+                        <Plus className="w-3.5 h-3.5" /> Add Custom
                       </button>
-                    ))}
+                    </div>
+
+                    {/* Pre-defined Library Database Matches if any */}
+                    {suggestions.length > 0 ? (
+                      <div>
+                        <div className="px-3.5 py-1.5 bg-zinc-950/80 text-[10px] font-bold uppercase text-zinc-400 tracking-wider flex justify-between">
+                          <span>Database Library Matches</span>
+                          <span>Target Muscle / Equipment</span>
+                        </div>
+                        {suggestions.map((item) => (
+                          <button
+                            key={item.id}
+                            type="button"
+                            onClick={() => handleSelectExercise(item)}
+                            className="w-full px-4 py-2.5 text-left hover:bg-zinc-800/80 transition flex items-center justify-between gap-3 group"
+                          >
+                            <div>
+                              <div className="text-sm font-bold text-white group-hover:text-orange-400 transition">
+                                {item.name}
+                              </div>
+                              <div className="flex items-center gap-2 mt-0.5">
+                                <span className="text-[10px] uppercase font-bold px-1.5 py-0.2 rounded bg-orange-500/15 text-orange-400 border border-orange-500/30">
+                                  {item.body_part}
+                                </span>
+                                <span className="text-[11px] text-zinc-400">
+                                  Target: <strong className="text-zinc-300">{item.target}</strong>
+                                </span>
+                                <span className="text-[11px] text-zinc-500">• {item.equipment}</span>
+                              </div>
+                            </div>
+                            <span className="text-xs font-bold text-orange-400 opacity-0 group-hover:opacity-100 transition shrink-0 flex items-center gap-1">
+                              + Add to Session
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="p-3 text-center bg-zinc-950/50">
+                        <span className="text-xs text-zinc-400">
+                          No matching movements in standard library. Click <strong className="text-orange-400">Add Custom</strong> above or press <kbd className="px-1.5 py-0.5 bg-zinc-800 rounded font-mono text-[10px] text-zinc-200">Enter</kbd> to save.
+                        </span>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -1064,8 +1187,13 @@ export const WorkoutTab: React.FC<WorkoutTabProps> = ({ currentRole, onOpenAuth 
                           {exIdx + 1}
                         </span>
                         <div>
-                          <h4 className="text-base font-extrabold text-white flex items-center gap-2">
+                          <h4 className="text-base font-extrabold text-white flex items-center gap-2 flex-wrap">
                             {exercise.exerciseName}
+                            {exercise.isCustom && (
+                              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/15 text-amber-300 border border-amber-500/30 flex items-center gap-1 font-sans">
+                                <Sparkles className="w-2.5 h-2.5 text-amber-400" /> Custom Movement
+                              </span>
+                            )}
                           </h4>
                           <div className="flex items-center gap-2 mt-0.5 text-[11px] text-zinc-400">
                             <span className="capitalize text-orange-400 font-semibold">{exercise.bodyPart}</span>
@@ -1414,16 +1542,35 @@ export const WorkoutTab: React.FC<WorkoutTabProps> = ({ currentRole, onOpenAuth 
                       Log at least 2 sessions of any exercise to unlock automated progressive overload recommendations.
                     </div>
                   ) : (
-                    challenges.slice(0, 3).map((ch, idx) => (
+                    challenges.slice(0, 4).map((ch, idx) => (
                       <div key={idx} className="p-3 rounded-xl bg-zinc-950 border border-zinc-800 space-y-1.5">
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs font-bold text-white">{ch.exerciseName}</span>
+                        <div className="flex items-center justify-between flex-wrap gap-1">
+                          <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                            {ch.exerciseName}
+                            {ch.isCustomExercise && (
+                              <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 font-sans flex items-center gap-0.5">
+                                <Sparkles className="w-2.5 h-2.5" /> Custom
+                              </span>
+                            )}
+                          </span>
                           <span className="text-[10px] uppercase font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded">
                             +{Math.round((ch.targetWeightKg - ch.lastWeightKg) * 10) / 10} kg
                           </span>
                         </div>
                         <div className="text-[11px] text-zinc-400">
                           Target: <strong className="text-white">{ch.targetWeightKg} kg</strong> × {ch.targetReps} reps ({ch.recommendedSets} sets)
+                        </div>
+                        <div className="flex items-center gap-2 text-[10px] text-zinc-400">
+                          {ch.streakCount !== undefined && ch.streakCount > 0 && (
+                            <span className="text-orange-400 font-bold flex items-center gap-0.5">
+                              <Flame className="w-3 h-3 text-orange-500" /> {ch.streakCount} session{ch.streakCount > 1 ? 's' : ''} streak
+                            </span>
+                          )}
+                          {ch.isPersonalRecord && (
+                            <span className="text-amber-300 font-bold flex items-center gap-0.5">
+                              <Sparkles className="w-3 h-3 text-amber-400" /> PR Hit!
+                            </span>
+                          )}
                         </div>
                         <p className="text-[10px] text-zinc-500 leading-snug">{ch.progressionReason}</p>
                       </div>
@@ -2514,10 +2661,185 @@ export const WorkoutTab: React.FC<WorkoutTabProps> = ({ currentRole, onOpenAuth 
             <div className="pt-3 border-t border-zinc-800 flex justify-between items-center text-xs text-zinc-500">
               <span>{workouts.length} total historical logs</span>
               <button
+                type="button"
                 onClick={() => setShowAllHistoryModal(false)}
                 className="px-4 py-2 bg-orange-600 hover:bg-orange-500 text-white font-bold rounded-lg text-xs transition"
               >
                 Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: Custom Exercise Creator */}
+      {showCustomModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm animate-fade-in">
+          <div className="relative w-full max-w-lg bg-zinc-900 border border-zinc-800 rounded-2xl p-6 shadow-2xl max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between pb-3 border-b border-zinc-800">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-orange-500/10 text-orange-400 border border-orange-500/20">
+                  <Sparkles className="w-5 h-5 text-amber-400" />
+                </div>
+                <div>
+                  <h3 className="text-base font-extrabold text-white">Create Custom Exercise Movement</h3>
+                  <p className="text-[11px] text-zinc-400">
+                    Direct logging with sets, weight, reps &amp; RPE. Integrated into progressive overload &amp; PRs.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowCustomModal(false)}
+                className="p-1 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="overflow-y-auto my-4 space-y-4 pr-1 text-xs">
+              {/* Exercise Name Input */}
+              <div>
+                <label className="block text-xs font-bold text-zinc-200 mb-1.5">
+                  Exercise Name <span className="text-orange-400">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={customExName}
+                  onChange={(e) => setCustomExName(e.target.value)}
+                  placeholder="e.g. Nordic Hamstring Curl, Weighted Ring Dips, Hack Squat..."
+                  className="w-full px-3.5 py-2.5 bg-zinc-950 border border-zinc-800 focus:border-orange-500 rounded-xl text-sm font-semibold text-white placeholder-zinc-500 focus:outline-none transition"
+                  autoFocus
+                />
+              </div>
+
+              {/* Quick suggestions pills */}
+              <div>
+                <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider block mb-1">
+                  Quick Ideas:
+                </span>
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  {[
+                    { name: 'Nordic Hamstring Curl', bp: 'legs', target: 'hamstrings', eq: 'body weight' },
+                    { name: 'Weighted Ring Dips', bp: 'chest', target: 'pectorals', eq: 'body weight' },
+                    { name: 'Hack Squat', bp: 'legs', target: 'quads', eq: 'machine' },
+                    { name: 'Incline Hammer Curl', bp: 'arms', target: 'biceps', eq: 'dumbbell' },
+                    { name: 'Belt Squat', bp: 'legs', target: 'quads', eq: 'machine' },
+                    { name: 'Zercher Squat', bp: 'legs', target: 'quads', eq: 'barbell' },
+                  ].map((idea) => (
+                    <button
+                      key={idea.name}
+                      type="button"
+                      onClick={() => {
+                        setCustomExName(idea.name);
+                        setCustomExBodyPart(idea.bp);
+                        setCustomExTarget(idea.target);
+                        setCustomExEquipment(idea.eq);
+                      }}
+                      className="px-2 py-1 bg-zinc-950 hover:bg-zinc-800 border border-zinc-800 rounded-lg text-[11px] text-zinc-300 hover:text-white transition"
+                    >
+                      {idea.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Body Part & Target Muscle */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-zinc-300 mb-1.5">
+                    Body Part / Region
+                  </label>
+                  <select
+                    value={customExBodyPart}
+                    onChange={(e) => setCustomExBodyPart(e.target.value)}
+                    className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs font-semibold text-white focus:outline-none focus:border-orange-500 capitalize"
+                  >
+                    <option value="chest">Chest</option>
+                    <option value="back">Back</option>
+                    <option value="legs">Legs</option>
+                    <option value="shoulders">Shoulders</option>
+                    <option value="arms">Arms</option>
+                    <option value="waist">Core / Waist</option>
+                    <option value="full body">Full Body</option>
+                    <option value="other">Other</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-zinc-300 mb-1.5">
+                    Target Muscle
+                  </label>
+                  <input
+                    type="text"
+                    value={customExTarget}
+                    onChange={(e) => setCustomExTarget(e.target.value)}
+                    placeholder="e.g. pectorals, lats, quads, triceps"
+                    className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs font-semibold text-white focus:outline-none focus:border-orange-500 capitalize"
+                  />
+                </div>
+              </div>
+
+              {/* Equipment */}
+              <div>
+                <label className="block text-xs font-bold text-zinc-300 mb-1.5">
+                  Equipment Type
+                </label>
+                <select
+                  value={customExEquipment}
+                  onChange={(e) => setCustomExEquipment(e.target.value)}
+                  className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs font-semibold text-white focus:outline-none focus:border-orange-500 capitalize"
+                >
+                  <option value="barbell">Barbell</option>
+                  <option value="dumbbell">Dumbbell</option>
+                  <option value="cable">Cable</option>
+                  <option value="machine">Machine</option>
+                  <option value="body weight">Body Weight / Calisthenics</option>
+                  <option value="kettlebell">Kettlebell</option>
+                  <option value="resistance band">Resistance Band</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>
+
+              {/* Notes */}
+              <div>
+                <label className="block text-xs font-bold text-zinc-300 mb-1.5">
+                  Technique Notes / Cues (Optional)
+                </label>
+                <textarea
+                  rows={2}
+                  value={customExNotes}
+                  onChange={(e) => setCustomExNotes(e.target.value)}
+                  placeholder="e.g. 3-second eccentric pause, maintain neutral spine, explode on concentric..."
+                  className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-orange-500 resize-none placeholder-zinc-500"
+                />
+              </div>
+            </div>
+
+            <div className="pt-3 border-t border-zinc-800 flex items-center justify-between gap-3">
+              <button
+                type="button"
+                onClick={() => setShowCustomModal(false)}
+                className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-semibold rounded-xl transition"
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                disabled={!customExName.trim()}
+                onClick={() =>
+                  handleAddCustomExercise(
+                    customExName,
+                    customExBodyPart,
+                    customExTarget,
+                    customExEquipment,
+                    customExNotes
+                  )
+                }
+                className="px-5 py-2.5 bg-orange-600 hover:bg-orange-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-extrabold rounded-xl shadow-lg shadow-orange-600/30 transition flex items-center gap-1.5"
+              >
+                <Plus className="w-4 h-4" /> Add Custom Exercise to Session
               </button>
             </div>
           </div>

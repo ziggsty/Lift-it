@@ -9,7 +9,9 @@ import mongoose, { Schema, Document } from 'mongoose';
 
 export interface IWorkoutLogDocument extends Document {
   userId: mongoose.Types.ObjectId;
-  exerciseName: string;
+  exerciseName: string; // User-typed custom exercise name or library movement
+  exerciseId?: string; // Optional string identifier (does not strictly require a library ID)
+  isCustomExercise?: boolean; // Flag if exercise is custom user-defined
   sets: number;
   reps: number;
   weightLiftedKg: number;
@@ -33,8 +35,18 @@ const WorkoutLogSchema = new Schema<IWorkoutLogDocument>(
     },
     exerciseName: {
       type: String,
-      required: [true, 'Exercise name is required'],
+      required: [true, 'Exercise name is required (can be custom user-defined or library exercise)'],
       trim: true,
+      index: true,
+    },
+    exerciseId: {
+      type: String,
+      required: false, // String instead of strictly requiring an ObjectId or pre-defined library ID
+      trim: true,
+    },
+    isCustomExercise: {
+      type: Boolean,
+      default: false,
       index: true,
     },
     sets: {

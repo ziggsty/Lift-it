@@ -22,6 +22,8 @@ export interface WorkoutItem {
   id: string;
   userId: string;
   exerciseName: string;
+  exerciseId?: string;
+  isCustomExercise?: boolean;
   sets: number;
   reps: number;
   weightLiftedKg: number;
@@ -55,6 +57,7 @@ export interface SessionExerciseData {
   target?: string;
   equipment?: string;
   notes?: string;
+  isCustom?: boolean;
   sets: WorkoutSetData[];
 }
 
@@ -92,10 +95,13 @@ export interface ExerciseProgressionRecord {
   exerciseId: string;
   exerciseName: string;
   targetMuscle?: string;
+  isCustomExercise?: boolean;
   allTimeMaxWeightKg: number;
   allTimeEstimated1RMKg: number;
   totalLifetimeVolumeKg: number;
   totalSessionsCount: number;
+  streakCount?: number;
+  overloadStreakCount?: number;
   lastSessionDate: string;
   nextTargetWeightKg: number;
   nextTargetReps: number;
@@ -104,6 +110,8 @@ export interface ExerciseProgressionRecord {
 
 export interface ProgressiveChallenge {
   exerciseName: string;
+  exerciseId?: string;
+  isCustomExercise?: boolean;
   currentEstimated1RM: number;
   lastWeightKg: number;
   lastReps: number;
@@ -113,6 +121,10 @@ export interface ProgressiveChallenge {
   progressionReason: string;
   recommendedSets: number;
   targetRestSeconds: number;
+  allTimeMaxWeightKg?: number;
+  isPersonalRecord?: boolean;
+  streakCount?: number;
+  overloadStreakCount?: number;
 }
 
 export interface MealItem {

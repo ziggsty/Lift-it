@@ -25,6 +25,8 @@ export interface IWorkoutLog {
   id: string;
   userId: string;
   exerciseName: string;
+  exerciseId?: string; // String identifier (does not strictly require a library ID)
+  isCustomExercise?: boolean; // Indicates user-typed custom exercise
   sets: number;
   reps: number;
   weightLiftedKg: number;
@@ -94,6 +96,8 @@ export interface IAuthTokenPayload {
 
 export interface IProgressiveChallenge {
   exerciseName: string;
+  exerciseId?: string;
+  isCustomExercise?: boolean;
   currentEstimated1RM: number;
   lastWeightKg: number;
   lastReps: number;
@@ -103,6 +107,10 @@ export interface IProgressiveChallenge {
   progressionReason: string;
   recommendedSets: number;
   targetRestSeconds: number;
+  allTimeMaxWeightKg?: number;
+  isPersonalRecord?: boolean;
+  streakCount?: number; // Total sessions this movement has been logged
+  overloadStreakCount?: number; // Consecutive sessions with maintained/increased load
 }
 
 export interface WorkoutSetData {
@@ -124,6 +132,7 @@ export interface SessionExerciseData {
   target?: string;
   equipment?: string;
   notes?: string;
+  isCustom?: boolean;
   sets: WorkoutSetData[];
 }
 
@@ -161,10 +170,13 @@ export interface ExerciseProgressionRecord {
   exerciseId: string;
   exerciseName: string;
   targetMuscle?: string;
+  isCustomExercise?: boolean;
   allTimeMaxWeightKg: number;
   allTimeEstimated1RMKg: number;
   totalLifetimeVolumeKg: number;
   totalSessionsCount: number;
+  streakCount?: number;
+  overloadStreakCount?: number;
   lastSessionDate: string;
   nextTargetWeightKg: number;
   nextTargetReps: number;

@@ -16,7 +16,18 @@ export const workoutController = {
         return;
       }
 
-      const { exerciseName, sets, reps, weightLiftedKg, durationMinutes, notes, rpe, timestamp } = req.body;
+      const { 
+        exerciseName, 
+        exerciseId, 
+        isCustomExercise, 
+        sets, 
+        reps, 
+        weightLiftedKg, 
+        durationMinutes, 
+        notes, 
+        rpe, 
+        timestamp 
+      } = req.body;
 
       if (!exerciseName || reps === undefined || weightLiftedKg === undefined || durationMinutes === undefined) {
         res.status(400).json({
@@ -36,9 +47,17 @@ export const workoutController = {
         return;
       }
 
+      const exName = exerciseName.trim();
+      const exSlug = exerciseId || `custom_${exName.toLowerCase().replace(/[^a-z0-9]+/g, '_')}`;
+      const isCustom = isCustomExercise !== undefined 
+        ? Boolean(isCustomExercise) 
+        : (!exerciseId || String(exerciseId).startsWith('custom_') || !exerciseId.match(/^0\d{3}$/));
+
       const workout = await db.createWorkout({
         userId,
-        exerciseName: exerciseName.trim(),
+        exerciseName: exName,
+        exerciseId: exSlug,
+        isCustomExercise: isCustom,
         sets: sets ? Number(sets) : 3,
         reps: Number(reps),
         weightLiftedKg: Number(weightLiftedKg),
@@ -50,7 +69,9 @@ export const workoutController = {
 
       res.status(201).json({
         success: true,
-        message: 'Workout session logged successfully.',
+        message: isCustom
+          ? `Custom exercise "${exName}" logged successfully.`
+          : `Workout session for "${exName}" logged successfully.`,
         data: workout,
       });
     } catch (error: any) {
@@ -104,21 +125,36 @@ export const workoutController = {
 
       const logs = await db.getWorkoutsByUserId(userId);
 
-      // Map to find all-time max weights per exercise for PR badges
+      // Map to find all-time max weights and 1RMs per exercise for PR badges
       const maxWeightsPerExercise = new Map<string, number>();
+      const max1RMPerExercise = new Map<string, number>();
       logs.forEach((log) => {
-        const currentMax = maxWeightsPerExercise.get(log.exerciseName.toLowerCase()) || 0;
-        if (log.weightLiftedKg > currentMax) {
-          maxWeightsPerExercise.set(log.exerciseName.toLowerCase(), log.weightLiftedKg);
+        const key = log.exerciseName.trim().toLowerCase();
+        const currentMaxWeight = maxWeightsPerExercise.get(key) || 0;
+        if (log.weightLiftedKg > currentMaxWeight) {
+          maxWeightsPerExercise.set(key, log.weightLiftedKg);
+        }
+        const current1RM = max1RMPerExercise.get(key) || 0;
+        const est1RM = log.calculated1RM || log.weightLiftedKg;
+        if (est1RM > current1RM) {
+          max1RMPerExercise.set(key, est1RM);
         }
       });
 
       // Enhance history items with PR status and metrics ready for pop-up modal
       const formattedHistory = logs.map((log) => {
-        const isPR = log.weightLiftedKg >= (maxWeightsPerExercise.get(log.exerciseName.toLowerCase()) || 0);
+        const key = log.exerciseName.trim().toLowerCase();
+        const isPR = log.weightLiftedKg >= (maxWeightsPerExercise.get(key) || 0);
+        const isCustom = Boolean(
+          log.isCustomExercise || 
+          log.exerciseId?.startsWith('custom_') || 
+          (log.notes && log.notes.includes('Custom Exercise'))
+        );
+
         return {
           ...log,
           isPersonalRecord: isPR,
+          isCustomExercise: isCustom,
           brzyckiEstimated1RM: log.calculated1RM,
           workCapacityScore: Math.round(((log.totalVolumeKg || 0) / (log.durationMinutes || 1)) * 10) / 10,
           formattedDate: new Date(log.timestamp).toLocaleDateString('en-US', {
@@ -145,7 +181,7 @@ export const workoutController = {
           totalSessionsLogged: sessions.length,
           totalCumulativeVolumeKg: Math.round(totalVolume),
           totalTrainingMinutes: totalMinutes,
-          distinctExercisesCount: new Set(logs.map((l) => l.exerciseName.toLowerCase())).size,
+          distinctExercisesCount: new Set(logs.map((l) => l.exerciseName.trim().toLowerCase())).size,
         },
         sessions,
         progressions,
@@ -158,8 +194,8 @@ export const workoutController = {
 
   /**
    * Weekly Progressive Overload Challenge Generator
-   * Evaluates weekly progress, compares previous 7-14 days volume and loads,
-   * and dynamically generates personalized progressive overload targets.
+   * Evaluates weekly progress across all exercises (both pre-defined library and custom user-defined movements),
+   * calculates streaks, Personal Records (PRs), and dynamically generates progressive overload targets.
    */
   async getProgressiveChallenge(req: Request, res: Response): Promise<void> {
     try {
@@ -169,33 +205,159 @@ export const workoutController = {
         return;
       }
 
+      // Gather logs from both standalone workouts and structured sessions
       const allUserLogs = await db.getWorkoutsByUserId(userId);
-      if (allUserLogs.length === 0) {
+      const allSessions = await db.getWorkoutSessionsByUserId(userId);
+
+      if (allUserLogs.length === 0 && allSessions.length === 0) {
         res.status(200).json({
           success: true,
           message: 'No previous workouts logged yet. Complete your first session to unlock progressive overload challenges!',
+          summary: {
+            overallStreakDays: 0,
+            totalPersonalRecords: 0,
+            trackedExercisesCount: 0,
+            customExercisesCount: 0,
+          },
           challenges: [],
         });
         return;
       }
 
-      // Group workouts by exercise name
-      const exerciseMap = new Map<string, IWorkoutLog[]>();
-      allUserLogs.forEach((log) => {
-        const key = log.exerciseName;
-        if (!exerciseMap.has(key)) {
-          exerciseMap.set(key, []);
+      interface ExercisePerformanceEntry {
+        exerciseName: string;
+        exerciseId?: string;
+        isCustomExercise?: boolean;
+        weightLiftedKg: number;
+        reps: number;
+        sets: number;
+        rpe?: number;
+        calculated1RM: number;
+        timestamp: string;
+      }
+
+      // Group performance logs by standardized exercise name
+      const exerciseMap = new Map<string, ExercisePerformanceEntry[]>();
+
+      // 1. Ingest standalone workout logs
+      for (const log of allUserLogs) {
+        const name = log.exerciseName.trim();
+        const key = name.toLowerCase();
+        if (!exerciseMap.has(key)) exerciseMap.set(key, []);
+
+        const isCustom = Boolean(
+          log.isCustomExercise || 
+          log.exerciseId?.startsWith('custom_') || 
+          (log.notes && log.notes.includes('Custom Exercise'))
+        );
+
+        exerciseMap.get(key)!.push({
+          exerciseName: name,
+          exerciseId: log.exerciseId,
+          isCustomExercise: isCustom,
+          weightLiftedKg: log.weightLiftedKg,
+          reps: log.reps,
+          sets: log.sets,
+          rpe: log.rpe,
+          calculated1RM: log.calculated1RM || log.weightLiftedKg,
+          timestamp: log.timestamp,
+        });
+      }
+
+      // 2. Ingest structured sessions if not duplicated
+      for (const session of allSessions) {
+        for (const ex of session.exercises || []) {
+          const name = ex.exerciseName.trim();
+          const key = name.toLowerCase();
+          if (!exerciseMap.has(key)) exerciseMap.set(key, []);
+
+          const workingSets = (ex.sets || []).filter((s: any) => !s.isWarmup);
+          const validSets = workingSets.length > 0 ? workingSets : (ex.sets || []);
+          if (validSets.length === 0) continue;
+
+          // Find top set in session
+          const topSet = validSets.reduce((prev: any, curr: any) => {
+            return Number(curr.weight) > Number(prev.weight) ? curr : prev;
+          }, validSets[0]);
+
+          const rawWeight = Number(topSet.weight || 0);
+          const isLbs = session.weightUnit === 'lbs' || topSet.weightUnit === 'lbs';
+          const weightKg = isLbs ? Math.round(rawWeight * 0.45359237 * 10) / 10 : rawWeight;
+          const reps = Number(topSet.reps || 8);
+          const est1RM = reps > 1 && reps < 37
+            ? Math.round((weightKg * (36.0 / (37.0 - Math.min(reps, 36)))) * 10) / 10
+            : weightKg;
+
+          // Avoid same-day duplicates with standalone log
+          const existing = exerciseMap.get(key)!;
+          const sameSession = existing.some(
+            (e) => new Date(e.timestamp).toDateString() === new Date(session.timestamp).toDateString()
+          );
+
+          if (!sameSession) {
+            exerciseMap.get(key)!.push({
+              exerciseName: name,
+              exerciseId: ex.exerciseId,
+              isCustomExercise: Boolean(ex.isCustom || ex.exerciseId?.startsWith('custom_')),
+              weightLiftedKg: weightKg,
+              reps,
+              sets: validSets.length,
+              rpe: topSet.rpe ? Number(topSet.rpe) : 8.5,
+              calculated1RM: est1RM,
+              timestamp: session.timestamp,
+            });
+          }
         }
-        exerciseMap.get(key)!.push(log);
-      });
+      }
 
       const challenges: IProgressiveChallenge[] = [];
+      let totalPRCount = 0;
+      let totalCustomCount = 0;
 
-      // Generate dynamic overload challenge for each tracked exercise
-      exerciseMap.forEach((logs, exerciseName) => {
-        // Logs are sorted chronologically descending
-        const latest = logs[0];
-        const previous = logs.length > 1 ? logs[1] : null;
+      // Calculate challenge and streak metrics for each exercise
+      exerciseMap.forEach((entries) => {
+        if (entries.length === 0) return;
+
+        // Sort chronologically ascending to compute running PRs and overload streaks
+        entries.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+
+        const exerciseName = entries[0].exerciseName;
+        const isCustom = entries.some((e) => e.isCustomExercise);
+        if (isCustom) totalCustomCount++;
+
+        let allTimeMaxWeight = 0;
+        let allTimeMax1RM = 0;
+        let runningMaxWeight = 0;
+
+        entries.forEach((entry) => {
+          if (entry.weightLiftedKg > allTimeMaxWeight) allTimeMaxWeight = entry.weightLiftedKg;
+          if (entry.calculated1RM > allTimeMax1RM) allTimeMax1RM = entry.calculated1RM;
+          if (entry.weightLiftedKg >= runningMaxWeight) runningMaxWeight = entry.weightLiftedKg;
+        });
+
+        // Entries sorted descending for current state
+        const sortedDesc = [...entries].reverse();
+        const latest = sortedDesc[0];
+        const previous = sortedDesc.length > 1 ? sortedDesc[1] : null;
+
+        // Personal Record detection for this movement
+        const isPR = latest.weightLiftedKg >= allTimeMaxWeight;
+        if (isPR) totalPRCount++;
+
+        // Streak Count: Total sessions where this exercise was trained
+        const streakCount = entries.length;
+
+        // Progressive Overload Streak: Consecutive sessions where load or reps was maintained or increased
+        let overloadStreak = 1;
+        for (let i = 0; i < sortedDesc.length - 1; i++) {
+          const curr = sortedDesc[i];
+          const prev = sortedDesc[i + 1];
+          if (curr.weightLiftedKg >= prev.weightLiftedKg || curr.reps >= prev.reps) {
+            overloadStreak++;
+          } else {
+            break;
+          }
+        }
 
         let targetWeight = latest.weightLiftedKg;
         let targetReps = latest.reps;
@@ -207,9 +369,9 @@ export const workoutController = {
         if (latest.reps >= 8 && (latest.rpe || 8) <= 8.5) {
           const increment = latest.weightLiftedKg >= 80 ? 5 : 2.5;
           targetWeight = latest.weightLiftedKg + increment;
-          targetReps = latest.reps >= 10 ? 8 : latest.reps; // reset rep floor slightly on weight jump
+          targetReps = latest.reps >= 10 ? 8 : latest.reps;
           progressionType = 'weight_increase';
-          reason = `You hit ${latest.reps} reps cleanly at ${latest.weightLiftedKg}kg (RPE ${latest.rpe || 8}). You have earned a +${increment}kg weight jump!`;
+          reason = `Hit ${latest.reps} reps cleanly at ${latest.weightLiftedKg}kg (RPE ${latest.rpe || 8}). Progression earned: +${increment}kg weight jump!`;
           targetRestSeconds = 120;
         }
         // Logic 2: If weight was matched across 2 sessions -> Push rep overload
@@ -217,7 +379,7 @@ export const workoutController = {
           targetReps = latest.reps + 2;
           targetWeight = latest.weightLiftedKg;
           progressionType = 'rep_overload';
-          reason = `Consolidating ${latest.weightLiftedKg}kg. Target +2 reps per set (${targetReps} reps) before jumping weight.`;
+          reason = `Consolidating ${latest.weightLiftedKg}kg. Target +2 reps per set (${targetReps} reps) before increasing load.`;
           targetRestSeconds = 90;
         }
         // Logic 3: Heavy compound low rep (<= 5 reps) -> Volume density & work capacity
@@ -225,18 +387,20 @@ export const workoutController = {
           targetWeight = latest.weightLiftedKg + 2.5;
           targetReps = latest.reps;
           progressionType = 'volume_density';
-          reason = `Strength phase detected. Push load to ${targetWeight}kg while maintaining explosive concentric drive and 3 min recovery.`;
+          reason = `Strength phase detected. Push load to ${targetWeight}kg maintaining concentric drive and 3m recovery.`;
           targetRestSeconds = 180;
         } else {
           // Default sensible progressive overload
           targetWeight = latest.weightLiftedKg + 2.5;
           targetReps = latest.reps;
           progressionType = 'weight_increase';
-          reason = `Progressive stimulus: Maintain form integrity with +2.5kg increase on your working sets.`;
+          reason = `Progressive stimulus: Maintain form integrity with +2.5kg increase on your next working sets.`;
         }
 
         challenges.push({
           exerciseName,
+          exerciseId: latest.exerciseId || `custom_${exerciseName.toLowerCase().replace(/[^a-z0-9]+/g, '_')}`,
+          isCustomExercise: isCustom,
           currentEstimated1RM: latest.calculated1RM || latest.weightLiftedKg,
           lastWeightKg: latest.weightLiftedKg,
           lastReps: latest.reps,
@@ -246,14 +410,29 @@ export const workoutController = {
           progressionReason: reason,
           recommendedSets: latest.sets || 4,
           targetRestSeconds,
+          allTimeMaxWeightKg: allTimeMaxWeight,
+          isPersonalRecord: isPR,
+          streakCount,
+          overloadStreakCount: overloadStreak,
         });
       });
+
+      // Calculate distinct training days over past 30 days for user streak
+      const sessionDates = new Set<string>();
+      allUserLogs.forEach((l) => sessionDates.add(new Date(l.timestamp).toDateString()));
+      allSessions.forEach((s) => sessionDates.add(new Date(s.timestamp).toDateString()));
 
       res.status(200).json({
         success: true,
         generatedAt: new Date().toISOString(),
         evaluationPeriodDays: 14,
         totalTrackedMovements: challenges.length,
+        summary: {
+          overallStreakDays: sessionDates.size,
+          totalPersonalRecords: totalPRCount,
+          trackedExercisesCount: challenges.length,
+          customExercisesCount: totalCustomCount,
+        },
         challenges,
       });
     } catch (error: any) {
@@ -391,16 +570,27 @@ export const workoutController = {
         const avgReps = Math.round(targetSets.reduce((acc: number, s: any) => acc + (Number(s.reps) || 0), 0) / (targetSets.length || 1));
         const avgRpe = topSet.rpe ? Number(topSet.rpe) : 8.5;
 
+        const exName = (ex.exerciseName || ex.name || 'Custom Exercise').trim();
+        const exSlug = ex.exerciseId || `custom_${exName.toLowerCase().replace(/[^a-z0-9]+/g, '_')}`;
+        const isCustom = Boolean(
+          ex.isCustom || 
+          !ex.exerciseId || 
+          String(ex.exerciseId).startsWith('custom_') || 
+          !String(ex.exerciseId).match(/^0\d{3}$/)
+        );
+
         const workoutLog = await db.createWorkout({
           userId,
-          exerciseName: (ex.exerciseName || ex.name || 'Custom Exercise').trim(),
+          exerciseName: exName,
+          exerciseId: exSlug,
+          isCustomExercise: isCustom,
           sets: ex.sets ? ex.sets.length : 3,
           reps: avgReps > 0 ? avgReps : 8,
           weightLiftedKg: normalizedWeightKg,
           durationMinutes: Math.round(durMins / (exercises.length || 1)),
           notes: `${name}: ${ex.notes || (unit === 'lbs' ? `${rawWeight} lbs logged` : `${rawWeight} kg logged`)}`,
           rpe: avgRpe,
-          timestamp: new Date().toISOString(),
+          timestamp: startTime || new Date().toISOString(),
         });
 
         createdLogs.push(workoutLog);
