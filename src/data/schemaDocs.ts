@@ -6,67 +6,95 @@ export const SUPABASE_SQL_SETUP = `
 
 -- 1. USERS TABLE
 CREATE TABLE IF NOT EXISTS users (
-  id SERIAL PRIMARY KEY,
-  username TEXT NOT NULL,
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
   email TEXT UNIQUE NOT NULL,
   password_hash TEXT NOT NULL,
-  role TEXT NOT NULL DEFAULT 'REGISTERED',
-  flagged BOOLEAN DEFAULT FALSE,
-  created_at TIMESTAMPTZ DEFAULT NOW()
+  role TEXT NOT NULL DEFAULT 'registered' CHECK (role IN ('guest', 'registered', 'admin')),
+  is_flagged BOOLEAN DEFAULT FALSE,
+  flag_reason TEXT DEFAULT '',
+  profile JSONB DEFAULT '{"heightCm": 175, "weightKg": 75, "activityLevel": "moderate", "targetCalorieGoal": 2400, "targetProteinGoal": 150}'::jsonb,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- Index on email
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
 
--- 2. WORKOUT_LOGS TABLE
-CREATE TABLE IF NOT EXISTS workout_logs (
-  id SERIAL PRIMARY KEY,
-  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+-- 2. WORKOUTS TABLE
+CREATE TABLE IF NOT EXISTS workouts (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   exercise_name TEXT NOT NULL,
+  sets INTEGER NOT NULL DEFAULT 3,
   reps INTEGER NOT NULL DEFAULT 8,
-  weight NUMERIC(6,2) NOT NULL DEFAULT 0,
-  duration INTEGER NOT NULL DEFAULT 45,
-  rpe NUMERIC(3,1) DEFAULT 8.0,
+  weight_lifted_kg NUMERIC(6,2) NOT NULL DEFAULT 0,
+  duration_minutes INTEGER NOT NULL DEFAULT 30,
   notes TEXT DEFAULT '',
-  created_at TIMESTAMPTZ DEFAULT NOW()
+  rpe NUMERIC(3,1) DEFAULT 8.0,
+  calculated_1rm NUMERIC(6,2),
+  total_volume_kg NUMERIC(8,2),
+  timestamp TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_workout_logs_user_time ON workout_logs(user_id, created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_workout_logs_exercise ON workout_logs(user_id, exercise_name);
+CREATE INDEX IF NOT EXISTS idx_workouts_user_time ON workouts(user_id, timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_workouts_exercise ON workouts(user_id, exercise_name);
 
--- 3. MEAL_LOGS TABLE
-CREATE TABLE IF NOT EXISTS meal_logs (
-  id SERIAL PRIMARY KEY,
-  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  food_name TEXT NOT NULL,
+-- 3. MEALS TABLE
+CREATE TABLE IF NOT EXISTS meals (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  meal_name TEXT NOT NULL,
+  meal_type TEXT NOT NULL DEFAULT 'lunch' CHECK (meal_type IN ('breakfast', 'lunch', 'dinner', 'snack')),
   calories INTEGER NOT NULL DEFAULT 0,
-  protein NUMERIC(6,2) NOT NULL DEFAULT 0,
-  fiber NUMERIC(6,2) NOT NULL DEFAULT 0,
-  carbs NUMERIC(6,2) NOT NULL DEFAULT 0,
-  fats NUMERIC(6,2) NOT NULL DEFAULT 0,
-  created_at TIMESTAMPTZ DEFAULT NOW()
+  protein_grams NUMERIC(6,2) NOT NULL DEFAULT 0,
+  fiber_grams NUMERIC(6,2) NOT NULL DEFAULT 0,
+  carbs_grams NUMERIC(6,2) NOT NULL DEFAULT 0,
+  fats_grams NUMERIC(6,2) NOT NULL DEFAULT 0,
+  notes TEXT DEFAULT '',
+  timestamp TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_meal_logs_user_time ON meal_logs(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_meals_user_time ON meals(user_id, timestamp DESC);
 
--- 4. FOOD DATABASE TABLE (OPTIONAL EXPANSION)
+-- 4. FOOD DATABASE TABLE
 CREATE TABLE IF NOT EXISTS food_items (
-  id SERIAL PRIMARY KEY,
+  id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
-  category TEXT NOT NULL,
+  category TEXT NOT NULL CHECK (category IN ('protein', 'carbs', 'fats', 'dairy', 'vegetable', 'fruit', 'beverage', 'snack')),
   serving_size TEXT NOT NULL,
   calories INTEGER NOT NULL DEFAULT 0,
   protein_grams NUMERIC(6,2) NOT NULL DEFAULT 0,
   fiber_grams NUMERIC(6,2) NOT NULL DEFAULT 0,
   carbs_grams NUMERIC(6,2) NOT NULL DEFAULT 0,
   fats_grams NUMERIC(6,2) NOT NULL DEFAULT 0,
+  sodium_mg INTEGER DEFAULT 0,
+  potassium_mg INTEGER DEFAULT 0,
+  public_notes TEXT DEFAULT '',
+  is_custom BOOLEAN DEFAULT FALSE,
+  created_by_id TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 5. DISABLE RLS FOR SERVER SERVICE ROLE / DIRECT API ACCESS
+CREATE INDEX IF NOT EXISTS idx_food_name ON food_items(name);
+
+-- 5. ANNOUNCEMENTS TABLE
+CREATE TABLE IF NOT EXISTS announcements (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  message TEXT NOT NULL,
+  priority TEXT NOT NULL DEFAULT 'normal' CHECK (priority IN ('low', 'normal', 'high', 'urgent')),
+  created_by_email TEXT NOT NULL,
+  active BOOLEAN DEFAULT TRUE,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 6. DISABLE RLS OR ENABLE OPEN POLICIES FOR BACKEND SERVICE ACCESS
 ALTER TABLE users DISABLE ROW LEVEL SECURITY;
-ALTER TABLE workout_logs DISABLE ROW LEVEL SECURITY;
-ALTER TABLE meal_logs DISABLE ROW LEVEL SECURITY;
+ALTER TABLE workouts DISABLE ROW LEVEL SECURITY;
+ALTER TABLE meals DISABLE ROW LEVEL SECURITY;
+ALTER TABLE food_items DISABLE ROW LEVEL SECURITY;
+ALTER TABLE announcements DISABLE ROW LEVEL SECURITY;
 `;
 
 export const UserMongooseSchemaString = `
