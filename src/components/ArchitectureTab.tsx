@@ -365,7 +365,7 @@ export const ArchitectureTab: React.FC = () => {
     announcement: {
       title: 'Announcement.model.ts (Mongoose / MongoDB Schema)',
       code: AnnouncementMongooseSchemaString.trim(),
-      desc: 'System broadcast announcements schema with priority levels (low, normal, high, urgent), administrative attribution, and active status filtering.',
+      desc: 'System notifications and alerts schema supporting global broadcasts to all athletes or targeted delivery to specific users, with priority levels and active status filtering.',
       badge: 'Mongoose ODM',
       dbType: 'MongoDB / Mongoose',
     },

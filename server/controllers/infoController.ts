@@ -37,10 +37,14 @@ export const infoController = {
   },
 
   /**
-   * Get active system announcements / global notifications
+   * Get active system announcements & notifications:
+   * Returns global announcements plus any targeted notifications matching the current authenticated user.
    */
-  getAnnouncements(_req: Request, res: Response): void {
-    const announcements = db.getAnnouncements(true);
+  getAnnouncements(req: Request, res: Response): void {
+    const currentUserId = req.user?.userId;
+    // Pass currentUserId: if guest, undefined will return only global announcements.
+    // If authenticated user or admin, returns global broadcasts + any notification targeted to their user ID.
+    const announcements = db.getAnnouncementsForUser(currentUserId, true);
     res.status(200).json({
       success: true,
       count: announcements.length,

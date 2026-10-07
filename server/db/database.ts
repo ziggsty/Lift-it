@@ -243,6 +243,9 @@ class LiftItDatabase {
         title: 'Lift It Platform Live on Supabase PostgreSQL!',
         message: 'All athlete accounts, workouts, and meal plan logs are now persisting directly into your Supabase database.',
         priority: 'high',
+        targetType: 'all',
+        targetUserIds: [],
+        targetUserEmails: [],
         createdByEmail: 'admin@liftit.com',
         createdAt: '2026-10-01T12:00:00.000Z',
         active: true,
@@ -253,6 +256,9 @@ class LiftItDatabase {
         title: 'Dynamic Progressive Overload Engine Activated',
         message: 'Your rolling 14-day training volume is evaluated automatically to calculate progressive weight and rep jumps.',
         priority: 'normal',
+        targetType: 'all',
+        targetUserIds: [],
+        targetUserEmails: [],
         createdByEmail: 'admin@liftit.com',
         createdAt: '2026-10-02T09:00:00.000Z',
         active: true,
@@ -1264,12 +1270,41 @@ class LiftItDatabase {
     return [...this.announcements].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }
 
+  public getAnnouncementsForUser(userId?: string, onlyActive: boolean = true): ISystemAnnouncement[] {
+    const all = onlyActive ? this.announcements.filter((a) => a.active) : [...this.announcements];
+
+    return all
+      .filter((a) => {
+        // Global broadcast: visible to all users and guests
+        if (!a.targetType || a.targetType === 'all') {
+          return true;
+        }
+
+        // Targeted notification: requires authenticated userId matching targetUserIds
+        if (a.targetType === 'specific') {
+          if (!userId) return false;
+          const targetIds = Array.isArray(a.targetUserIds) ? a.targetUserIds.map((id) => String(id)) : [];
+          return targetIds.includes(String(userId));
+        }
+
+        return true;
+      })
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  }
+
   public createAnnouncement(data: Omit<ISystemAnnouncement, '_id' | 'id' | 'createdAt'>): ISystemAnnouncement {
     const id = `anc_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
     const newAnc: ISystemAnnouncement = {
       _id: id,
       id,
-      ...data,
+      title: data.title,
+      message: data.message,
+      priority: data.priority,
+      targetType: data.targetType || 'all',
+      targetUserIds: data.targetUserIds || [],
+      targetUserEmails: data.targetUserEmails || [],
+      createdByEmail: data.createdByEmail,
+      active: data.active !== false,
       createdAt: new Date().toISOString(),
     };
     this.announcements.push(newAnc);

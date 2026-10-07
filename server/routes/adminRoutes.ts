@@ -14,6 +14,7 @@ router.patch('/users/:id/role', adminController.updateUserRole);
 router.delete('/users/:id', adminController.deleteUser);
 
 // System Updates & Global Notifications Broadcasting
+router.get('/announcements', adminController.getAnnouncements);
 router.post('/announcements', adminController.createAnnouncement);
 router.delete('/announcements/:id', adminController.deleteAnnouncement);
 

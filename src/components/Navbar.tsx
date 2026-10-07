@@ -202,17 +202,28 @@ export const Navbar: React.FC<NavbarProps> = ({
                             <span className="text-xs font-semibold text-zinc-200">
                               {anc.title}
                             </span>
-                            <span
-                              className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded ${
-                                anc.priority === 'urgent'
-                                  ? 'bg-rose-500/20 text-rose-400'
-                                  : anc.priority === 'high'
-                                  ? 'bg-orange-500/20 text-orange-400'
-                                  : 'bg-zinc-800 text-zinc-400'
-                              }`}
-                            >
-                              {anc.priority}
-                            </span>
+                            <div className="flex items-center gap-1.5">
+                              {anc.targetType === 'specific' ? (
+                                <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                                  🎯 Targeted
+                                </span>
+                              ) : (
+                                <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400">
+                                  🌐 Global
+                                </span>
+                              )}
+                              <span
+                                className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded ${
+                                  anc.priority === 'urgent'
+                                    ? 'bg-rose-500/20 text-rose-400'
+                                    : anc.priority === 'high'
+                                    ? 'bg-orange-500/20 text-orange-400'
+                                    : 'bg-zinc-800 text-zinc-400'
+                                }`}
+                              >
+                                {anc.priority}
+                              </span>
+                            </div>
                           </div>
                           <p className="text-xs text-zinc-400 leading-relaxed">{anc.message}</p>
                           <div className="mt-2 text-[10px] text-zinc-500 flex justify-between">

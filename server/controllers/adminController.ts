@@ -164,31 +164,84 @@ export const adminController = {
   },
 
   /**
-   * Push system updates / broadcast notification to all users
+   * Get all system announcements / broadcasts for admin audit and management
+   */
+  async getAnnouncements(_req: Request, res: Response): Promise<void> {
+    try {
+      const announcements = db.getAnnouncements(false);
+      res.status(200).json({
+        success: true,
+        count: announcements.length,
+        data: announcements,
+      });
+    } catch (error: any) {
+      res.status(500).json({ success: false, error: error.message });
+    }
+  },
+
+  /**
+   * Push system updates: either as a global broadcast to all users
+   * or as a targeted notification to specific users (e.g. selected user IDs)
    */
   async createAnnouncement(req: Request, res: Response): Promise<void> {
     try {
-      const { title, message, priority } = req.body;
+      const { title, message, priority, targetType, targetUserIds } = req.body;
 
       if (!title || !message) {
         res.status(400).json({
           success: false,
-          error: 'Title and message are required for system announcement broadcast.',
+          error: 'Title and message are required for system announcement dispatch.',
         });
         return;
+      }
+
+      const isTargeted = targetType === 'specific';
+      let resolvedTargetIds: string[] = [];
+      let resolvedTargetEmails: string[] = [];
+
+      if (isTargeted) {
+        if (!Array.isArray(targetUserIds) || targetUserIds.length === 0) {
+          res.status(400).json({
+            success: false,
+            error: 'Targeted notification requires selecting at least one recipient user.',
+          });
+          return;
+        }
+
+        resolvedTargetIds = targetUserIds.map((id: any) => String(id).trim()).filter(Boolean);
+        if (resolvedTargetIds.length === 0) {
+          res.status(400).json({
+            success: false,
+            error: 'No valid recipient user IDs provided.',
+          });
+          return;
+        }
+
+        // Fetch user records to store human-readable names and emails
+        const allUsers = await db.getAllUsers();
+        resolvedTargetEmails = allUsers
+          .filter((u) => resolvedTargetIds.includes(String(u.id)) || resolvedTargetIds.includes(String(u._id)))
+          .map((u) => `${u.name} (${u.email})`);
       }
 
       const announcement = db.createAnnouncement({
         title: title.trim(),
         message: message.trim(),
         priority: priority || 'normal',
+        targetType: isTargeted ? 'specific' : 'all',
+        targetUserIds: resolvedTargetIds,
+        targetUserEmails: resolvedTargetEmails,
         createdByEmail: req.user?.email || 'admin@liftit.com',
         active: true,
       });
 
+      const audienceFeedback = isTargeted
+        ? `targeted notification sent to ${resolvedTargetIds.length} user(s)`
+        : 'global announcement broadcasted to all users';
+
       res.status(201).json({
         success: true,
-        message: 'System announcement broadcasted to all registered users successfully.',
+        message: `System ${audienceFeedback} successfully.`,
         data: announcement,
       });
     } catch (error: any) {

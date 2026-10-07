@@ -1,7 +1,7 @@
 /**
  * Mongoose Schema Design for "Lift It" - SystemAnnouncement Model
- * Allows admins to broadcast global alerts and maintenance/feature notifications
- * to all registered users.
+ * Allows admins to broadcast global alerts or dispatch targeted notifications
+ * to specific users across the platform.
  */
 
 export const AnnouncementMongooseSchemaString = `
@@ -11,6 +11,9 @@ export interface IAnnouncementDocument extends Document {
   title: string;
   message: string;
   priority: 'low' | 'normal' | 'high' | 'urgent';
+  targetType: 'all' | 'specific';
+  targetUserIds: string[];
+  targetUserEmails?: string[];
   createdByEmail: string;
   active: boolean;
   createdAt: Date;
@@ -36,6 +39,21 @@ const AnnouncementSchema = new Schema<IAnnouncementDocument>(
       enum: ['low', 'normal', 'high', 'urgent'],
       default: 'normal',
     },
+    targetType: {
+      type: String,
+      enum: ['all', 'specific'],
+      default: 'all',
+      index: true,
+    },
+    targetUserIds: {
+      type: [String],
+      default: [],
+      index: true,
+    },
+    targetUserEmails: {
+      type: [String],
+      default: [],
+    },
     createdByEmail: {
       type: String,
       required: true,
@@ -52,6 +70,7 @@ const AnnouncementSchema = new Schema<IAnnouncementDocument>(
 );
 
 AnnouncementSchema.index({ active: 1, createdAt: -1 });
+AnnouncementSchema.index({ targetType: 1, active: 1 });
 
 export const Announcement = mongoose.model<IAnnouncementDocument>('Announcement', AnnouncementSchema);
 `;

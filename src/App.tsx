@@ -60,6 +60,11 @@ export function App() {
     }
   };
 
+  // Re-fetch notifications whenever user identity or persona changes
+  useEffect(() => {
+    fetchAnnouncements();
+  }, [currentUser]);
+
   const handleLoginSuccess = (user: UserProfile, token: string) => {
     api.setToken(token);
     setCurrentUser(user);

@@ -160,6 +160,9 @@ export interface Announcement {
   title: string;
   message: string;
   priority: 'low' | 'normal' | 'high' | 'urgent';
+  targetType?: 'all' | 'specific';
+  targetUserIds?: string[];
+  targetUserEmails?: string[];
   createdByEmail: string;
   createdAt: string;
   active: boolean;
