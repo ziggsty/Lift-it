@@ -2284,7 +2284,18 @@ export const WorkoutTab: React.FC<WorkoutTabProps> = ({ currentRole, onOpenAuth 
                 </p>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCustomExName(librarySearch.trim());
+                    setShowCustomModal(true);
+                  }}
+                  className="px-3 py-1.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 rounded-lg text-xs font-bold transition flex items-center gap-1.5 shadow-sm"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                  + Custom Movement Form
+                </button>
                 <span className="px-3 py-1 bg-zinc-950 border border-zinc-800 rounded-lg text-xs font-mono font-bold text-orange-400">
                   {libraryExercises.length} Movements Available
                 </span>
@@ -2370,12 +2381,27 @@ export const WorkoutTab: React.FC<WorkoutTabProps> = ({ currentRole, onOpenAuth 
               Loading exercise database...
             </div>
           ) : libraryExercises.length === 0 ? (
-            <div className="p-12 text-center border-2 border-dashed border-zinc-800 rounded-2xl bg-zinc-900">
-              <Dumbbell className="w-10 h-10 text-zinc-600 mx-auto mb-3" />
-              <h4 className="text-base font-bold text-white">No matching exercises found</h4>
-              <p className="text-xs text-zinc-400 mt-1">
-                Try clearing your search query or switching filters to view all movements.
+            <div className="p-12 text-center border-2 border-dashed border-zinc-800 rounded-2xl bg-zinc-900 space-y-3">
+              <Dumbbell className="w-10 h-10 text-zinc-600 mx-auto" />
+              <h4 className="text-base font-bold text-white">No matching exercises found in library</h4>
+              <p className="text-xs text-zinc-400 mt-1 max-w-sm mx-auto">
+                {librarySearch.trim()
+                  ? `"${librarySearch}" is not in the pre-defined exercise database. You can add it directly as a custom movement!`
+                  : 'Try clearing your search query or switching filters to view all movements.'}
               </p>
+              {librarySearch.trim() && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleAddCustomExercise(librarySearch.trim());
+                    setActiveSubTab('session');
+                  }}
+                  className="px-4 py-2 bg-orange-600 hover:bg-orange-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 mx-auto shadow-md"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                  + Add "{librarySearch.trim()}" as Custom Exercise to Active Session
+                </button>
+              )}
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">

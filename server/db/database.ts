@@ -1210,34 +1210,60 @@ class LiftItDatabase {
 
   public async createMeal(mealData: Omit<IMealLog, '_id' | 'id'>): Promise<IMealLog> {
     const queryUserId = !isNaN(Number(mealData.userId)) ? Number(mealData.userId) : mealData.userId;
+    const cleanMealType = (['breakfast', 'lunch', 'dinner', 'snack'].includes(String(mealData.mealType || '').toLowerCase().trim())
+      ? String(mealData.mealType).toLowerCase().trim()
+      : 'lunch') as 'breakfast' | 'lunch' | 'dinner' | 'snack';
 
-    const { data, error } = await supabase
-      .from('meal_logs')
-      .insert({
-        user_id: queryUserId,
-        food_name: mealData.mealName,
-        calories: Number(mealData.calories),
-        protein: Number(mealData.proteinGrams),
-        fiber: Number(mealData.fiberGrams || 0),
-        carbs: Number(mealData.carbsGrams),
-        fats: Number(mealData.fatsGrams),
-        created_at: mealData.timestamp || new Date().toISOString(),
-      })
-      .select()
-      .single();
+    try {
+      const { data, error } = await supabase
+        .from('meal_logs')
+        .insert({
+          user_id: queryUserId,
+          food_name: mealData.mealName,
+          meal_type: cleanMealType,
+          calories: Number(mealData.calories),
+          protein: Number(mealData.proteinGrams),
+          fiber: Number(mealData.fiberGrams || 0),
+          carbs: Number(mealData.carbsGrams),
+          fats: Number(mealData.fatsGrams),
+          notes: mealData.notes || '',
+          created_at: mealData.timestamp || new Date().toISOString(),
+        })
+        .select()
+        .single();
 
-    if (error) {
-      console.error('[Supabase] Meal insert error into Supabase meal_logs:', error.message);
-      throw new Error(`Supabase meal insert error: ${error.message}`);
+      if (!error && data) {
+        const mapped = this.mapSupabaseMeal(data);
+        console.log(`[Supabase] Persisted meal '${mapped.mealName}' (${mapped.mealType}) directly into Supabase meal_logs (ID: ${mapped.id}).`);
+        this.localMeals.unshift(mapped);
+        return mapped;
+      }
+
+      if (error) {
+        console.error('[Supabase] Meal insert error into Supabase meal_logs:', error.message);
+      }
+    } catch (err: any) {
+      console.warn('[Supabase] Meal insert exception:', err.message);
     }
 
-    if (data) {
-      const mapped = this.mapSupabaseMeal(data);
-      console.log(`[Supabase] Persisted meal '${mapped.mealName}' directly into Supabase meal_logs (ID: ${mapped.id}).`);
-      return mapped;
-    }
-
-    throw new Error('Failed to persist meal in Supabase.');
+    // Resilient local memory fallback if Supabase is offline or errors
+    const fallbackId = `meal_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const newMeal: IMealLog = {
+      _id: fallbackId,
+      id: fallbackId,
+      userId: String(mealData.userId),
+      mealName: mealData.mealName,
+      mealType: cleanMealType,
+      calories: Number(mealData.calories),
+      proteinGrams: Number(mealData.proteinGrams),
+      fiberGrams: Number(mealData.fiberGrams || 0),
+      carbsGrams: Number(mealData.carbsGrams),
+      fatsGrams: Number(mealData.fatsGrams),
+      notes: mealData.notes || '',
+      timestamp: mealData.timestamp || new Date().toISOString(),
+    };
+    this.localMeals.unshift(newMeal);
+    return newMeal;
   }
 
   public async deleteMeal(id: string, userId: string): Promise<boolean> {

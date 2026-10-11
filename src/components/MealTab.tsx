@@ -818,7 +818,15 @@ export const MealTab: React.FC<MealTabProps> = ({ currentRole, onOpenAuth }) => 
                   >
                     <div className="space-y-1">
                       <div className="flex items-center gap-2">
-                        <span className="text-xs font-black uppercase px-2 py-0.5 rounded bg-zinc-800 text-zinc-300">
+                        <span className={`text-xs font-black uppercase px-2 py-0.5 rounded border ${
+                          m.mealType === 'snack'
+                            ? 'bg-purple-500/20 text-purple-300 border-purple-500/40'
+                            : m.mealType === 'breakfast'
+                            ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                            : m.mealType === 'dinner'
+                            ? 'bg-indigo-500/20 text-indigo-300 border-indigo-500/40'
+                            : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                        }`}>
                           {m.mealType}
                         </span>
                         <span className="text-sm font-bold text-white group-hover:text-emerald-400 transition">{m.mealName}</span>
@@ -1023,7 +1031,15 @@ export const MealTab: React.FC<MealTabProps> = ({ currentRole, onOpenAuth }) => 
               <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
                 Meal Telemetry Log
               </span>
-              <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-zinc-800 text-zinc-300">
+              <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded border ${
+                activeModalItem.mealType === 'snack'
+                  ? 'bg-purple-500/20 text-purple-300 border-purple-500/40'
+                  : activeModalItem.mealType === 'breakfast'
+                  ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                  : activeModalItem.mealType === 'dinner'
+                  ? 'bg-indigo-500/20 text-indigo-300 border-indigo-500/40'
+                  : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+              }`}>
                 {activeModalItem.mealType}
               </span>
             </div>
@@ -1289,7 +1305,15 @@ export const MealTab: React.FC<MealTabProps> = ({ currentRole, onOpenAuth }) => 
                             )}
                           </td>
                           <td className="py-2.5 px-3">
-                            <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-300">
+                            <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded border ${
+                              m.mealType === 'snack'
+                                ? 'bg-purple-500/20 text-purple-300 border-purple-500/40'
+                                : m.mealType === 'breakfast'
+                                ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                                : m.mealType === 'dinner'
+                                ? 'bg-indigo-500/20 text-indigo-300 border-indigo-500/40'
+                                : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                            }`}>
                               {m.mealType}
                             </span>
                           </td>

@@ -37,7 +37,7 @@ export const mealController = {
       const meal = await db.createMeal({
         userId,
         mealName: mealName.trim(),
-        mealType: mealType || 'lunch',
+        mealType: (mealType ? String(mealType).toLowerCase().trim() : 'lunch') as any,
         calories: Number(calories),
         proteinGrams: Number(proteinGrams),
         fiberGrams: fiberGrams !== undefined ? Number(fiberGrams) : 0,
